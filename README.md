@@ -107,3 +107,45 @@ Both evaluations report `Recall@1`, `Recall@5`, and `MRR@10`.
 Results are saved automatically under a timestamped directory in
 `reports/evaluations/`. Use `--output-dir PATH` to choose a custom directory.
 Each run creates `report.html`, `report.txt`, and `report.json`.
+
+<br>
+
+---
+
+<br>
+
+## Step 4 - Fine-tune BGE-M3
+
+Input: `data/splits/train.jsonl`
+
+Output: `outputs/bge-m3-dense`
+
+```bash
+python scripts/train_bge_m3.py --train-file data/splits/train.jsonl --output-dir outputs/bge-m3-dense --num-gpus 1
+```
+
+The script trains the dense BGE-M3 retriever with one positive and seven negatives per query.
+
+### RTX 3090 (24 GB) Recommended Start
+
+```bash
+python scripts/train_bge_m3.py --train-file data/splits/train.jsonl --output-dir outputs/bge-m3-dense --num-gpus 1 --cuda-visible-devices 0 --batch-size 1 --passage-max-length 2048 --precision fp16
+```
+
+`--batch-size` is the number of query groups per GPU. Each group contains one positive and seven negatives, so use `1` on an RTX 3090. If CUDA runs out of memory, keep `--batch-size 1` and reduce the passage length first:
+
+```bash
+--passage-max-length 1024
+```
+
+Key parameters:
+
+- `--cuda-visible-devices 0` selects GPU 0. Use `0,1` with `--num-gpus 2` for two GPUs.
+- `--batch-size` is per GPU; default: `1`.
+- `--passage-max-length` is the maximum passage token count; default: `2048`.
+- `--query-max-length` is the maximum query token count; default: `512`.
+- `--epochs`, `--learning-rate`, and `--precision` control the training duration, optimizer rate, and numeric precision.
+- `--train-group-size` is one positive plus negatives; default: `8`.
+- `--dry-run` prints the underlying FlagEmbedding command without starting training.
+
+Training shows a progress bar and logs metrics every 10 steps.
