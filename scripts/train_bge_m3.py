@@ -46,6 +46,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_command(args: argparse.Namespace) -> list[str]:
+    training_module = (
+        "scripts.flagembedding_m3_resume"
+        if args.resume_from_checkpoint is not None
+        else "FlagEmbedding.finetune.embedder.encoder_only.m3"
+    )
     command = [
         sys.executable,
         "-m",
@@ -53,7 +58,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--nproc_per_node",
         str(args.num_gpus),
         "-m",
-        "FlagEmbedding.finetune.embedder.encoder_only.m3",
+        training_module,
         "--model_name_or_path",
         args.model,
         "--cache_dir",

@@ -159,6 +159,7 @@ python scripts/train_bge_m3.py --train-file data/splits/train_separate.jsonl --o
 ```
 
 Use the same training arguments as the original run. Do not use `--overwrite-output-dir` when resuming.
+The launcher applies the required FlagEmbedding/Transformers resume compatibility fix automatically.
 
 ### RTX 3090 (24 GB) Recommended Start
 
