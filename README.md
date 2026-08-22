@@ -1,5 +1,29 @@
 # Data Preparation
 
+## Step 0 - Generate Hard Negatives
+
+Input: `data/raw/porseman_clean.csv` with `question` and `content_text` columns
+
+Output: `data/raw/hard_negatives_all.jsonl`
+
+Without reasoning:
+
+```bash
+python scripts/generate_hard_negatives.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all.jsonl --no-thinking
+```
+
+With reasoning:
+
+```bash
+python scripts/generate_hard_negatives.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all.jsonl --thinking
+```
+
+<br>
+
+---
+
+<br>
+
 ## Step 1 - Clean and Deduplicate the Dataset
 
 Input: `data/raw/hard_negatives_all.jsonl`
