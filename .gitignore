@@ -205,12 +205,9 @@ tempCodeRunnerFile.py
 
 # Generated datasets, reports, checkpoints, and model caches
 data/
-data/processed/
-data/duplicates/
 outputs/
 reports/
 .hf-cache/
-porseman_clean.csv
 
 # Ruff stuff:
 .ruff_cache/

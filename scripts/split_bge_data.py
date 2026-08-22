@@ -1,4 +1,4 @@
-"""Convert the deduplicated dataset to BGE-M3 format and create data splits."""
+"""Convert a clean dataset to BGE-M3 format and create leakage-safe splits."""
 
 from __future__ import annotations
 

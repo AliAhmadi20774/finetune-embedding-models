@@ -174,14 +174,14 @@ def main() -> None:
         "input",
         nargs="?",
         type=Path,
-        default=Path("data/hard_negatives_all.jsonl"),
+        default=Path("data/raw/hard_negatives_all.jsonl"),
         help="Source JSONL file.",
     )
     parser.add_argument(
         "output",
         nargs="?",
         type=Path,
-        default=Path("data/hard_negatives_deduplicated.jsonl"),
+        default=Path("data/processed/hard_negatives_clean.jsonl"),
         help="Destination JSONL file.",
     )
     parser.add_argument("--negative-count", type=int, default=7)
