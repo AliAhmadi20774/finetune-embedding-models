@@ -1,6 +1,6 @@
 # Data Preparation
 
-## Step 1 — Remove Duplicate Queries
+## Step 1 - Clean and Deduplicate the Dataset
 
 Input: `data/hard_negatives_all.jsonl`
 
@@ -10,13 +10,16 @@ Output: `data/hard_negatives_deduplicated.jsonl`
 python deduplicate_queries.py data/hard_negatives_all.jsonl data/hard_negatives_deduplicated.jsonl
 ```
 
+This step calls `clean_and_deduplicate_dataset()` to remove duplicate queries,
+duplicate negatives, and positives mislabeled as negatives.
+
 <br>
 
 ---
 
 <br>
 
-## Step 2 — Create Train, Validation, and Test Files
+## Step 2 - Create Train, Validation, and Test Files
 
 ```bash
 python split_bge_data.py INPUT TRAIN_OUTPUT VALIDATION_OUTPUT TEST_OUTPUT --train-ratio 80 --validation-ratio 10 --test-ratio 10 --seed 42

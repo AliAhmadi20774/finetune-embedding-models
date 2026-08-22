@@ -39,6 +39,11 @@ def load_records(input_path: Path) -> list[dict[str, Any]]:
             if not isinstance(record["hard_negatives"], list):
                 raise ValueError(f"Invalid hard_negatives at line {line_number}.")
 
+            try:
+                to_bge_example(record)
+            except ValueError as error:
+                raise ValueError(f"Unclean record at line {line_number}: {error}") from error
+
             records.append(record)
 
     if not records:
@@ -84,17 +89,11 @@ def split_without_document_leakage(
     return splits
 
 
-def to_bge_example(
-    record: dict[str, Any],
-    positive_pool: list[str],
-    negative_count: int,
-    rng: random.Random,
-) -> tuple[dict[str, Any], int, int]:
+def to_bge_example(record: dict[str, Any]) -> dict[str, Any]:
+    """Convert one validated clean record to the FlagEmbedding data format."""
     positive = record["positive_document"]
     negatives: list[str] = []
     seen: set[str] = set()
-    removed_duplicates = 0
-    removed_false_negatives = 0
 
     for item in record["hard_negatives"]:
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
@@ -104,61 +103,34 @@ def to_bge_example(
         if not text:
             raise ValueError("Hard-negative text cannot be empty.")
         if text == positive:
-            removed_false_negatives += 1
-            continue
+            raise ValueError(
+                "A positive document is mislabeled as a negative. Run the cleaning step first."
+            )
         if text in seen:
-            removed_duplicates += 1
-            continue
+            raise ValueError(
+                "Duplicate negatives found. Run the cleaning step first."
+            )
 
         seen.add(text)
         negatives.append(text)
 
-    if len(negatives) > negative_count:
-        negatives = negatives[:negative_count]
-        seen = set(negatives)
+    if not negatives:
+        raise ValueError("At least one negative document is required.")
 
-    attempts = 0
-    max_attempts = len(positive_pool) * 2
-    while len(negatives) < negative_count and attempts < max_attempts:
-        candidate = rng.choice(positive_pool)
-        attempts += 1
-        if candidate != positive and candidate not in seen:
-            negatives.append(candidate)
-            seen.add(candidate)
-
-    if len(negatives) < negative_count:
-        raise ValueError("Not enough distinct documents to fill the negative list.")
-
-    return (
-        {"query": record["query"], "pos": [positive], "neg": negatives},
-        removed_duplicates,
-        removed_false_negatives,
-    )
+    return {"query": record["query"], "pos": [positive], "neg": negatives}
 
 
 def write_splits(
     splits: dict[str, list[dict[str, Any]]],
     output_paths: dict[str, Path],
-    positive_pool: list[str],
-    negative_count: int,
-    rng: random.Random,
-) -> tuple[int, int]:
-    removed_duplicates = 0
-    removed_false_negatives = 0
-
+) -> None:
     for split_name in SPLIT_NAMES:
         output_path = output_paths[split_name]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8", newline="\n") as destination:
             for record in splits[split_name]:
-                example, duplicate_count, false_negative_count = to_bge_example(
-                    record, positive_pool, negative_count, rng
-                )
-                removed_duplicates += duplicate_count
-                removed_false_negatives += false_negative_count
+                example = to_bge_example(record)
                 destination.write(json.dumps(example, ensure_ascii=False) + "\n")
-
-    return removed_duplicates, removed_false_negatives
 
 
 def parse_args() -> argparse.Namespace:
@@ -178,15 +150,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-ratio", type=float, required=True)
     parser.add_argument("--validation-ratio", type=float, required=True)
     parser.add_argument("--test-ratio", type=float, required=True)
-    parser.add_argument("--negative-count", type=int, default=7)
     parser.add_argument("--seed", type=int, required=True)
     args = parser.parse_args()
 
     ratios = (args.train_ratio, args.validation_ratio, args.test_ratio)
     if any(ratio <= 0 for ratio in ratios) or abs(sum(ratios) - 100.0) > 1e-9:
         parser.error("Split ratios must be positive percentages that sum to 100.")
-    if args.negative_count < 1:
-        parser.error("--negative-count must be at least 1.")
     if not args.input.is_file():
         parser.error(f"Input file not found: {args.input}")
 
@@ -217,21 +186,14 @@ def main() -> None:
     }
 
     records = load_records(args.input)
-    positive_pool = list(
-        dict.fromkeys(record["positive_document"] for record in records)
-    )
     splits = split_without_document_leakage(records, ratios, rng)
-    duplicate_count, false_negative_count = write_splits(
-        splits, output_paths, positive_pool, args.negative_count, rng
-    )
+    write_splits(splits, output_paths)
 
     for split_name in SPLIT_NAMES:
         print(
             f"{split_name}: {len(splits[split_name])} records -> "
             f"{output_paths[split_name]}"
         )
-    print(f"Removed {duplicate_count} duplicate negatives.")
-    print(f"Removed {false_negative_count} positives mislabeled as negatives.")
 
 
 if __name__ == "__main__":
