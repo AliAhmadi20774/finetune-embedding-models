@@ -89,7 +89,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--gradient_checkpointing_kwargs",
         '{"use_reentrant": false}',
         "--ddp_find_unused_parameters",
-        "False",
+        "True",
         "--logging_steps",
         str(args.logging_steps),
         "--disable_tqdm",
