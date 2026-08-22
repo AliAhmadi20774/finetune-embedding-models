@@ -7,3 +7,4 @@ numpy==2.2.6
 pytest==8.4.1
 openai>=1.0.0
 tqdm>=4.66.0
+FlagEmbedding

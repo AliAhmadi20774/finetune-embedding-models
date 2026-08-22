@@ -44,3 +44,42 @@ Outputs:
 - `data/splits/test.jsonl`
 
 The three ratios must add up to `100`.
+
+<br>
+
+---
+
+<br>
+
+## Step 3 - Evaluate the Test Data
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Positive-only corpus:
+
+```bash
+python scripts/evaluate_positive_only.py TEST_FILE MODEL
+```
+
+```bash
+python scripts/evaluate_positive_only.py data/splits/test.jsonl BAAI/bge-m3 --devices cuda:0 --fp16
+```
+
+Positive and negative corpus:
+
+```bash
+python scripts/evaluate_full_corpus.py TEST_FILE MODEL
+```
+
+```bash
+python scripts/evaluate_full_corpus.py data/splits/test.jsonl BAAI/bge-m3 --devices cuda:0 --fp16
+```
+
+Both evaluations report `Recall@1`, `Recall@5`, and `MRR@10`.
+Results are saved automatically under a timestamped directory in
+`reports/evaluations/`. Use `--output-dir PATH` to choose a custom directory.
+Each run creates `report.html`, `report.txt`, and `report.json`.
