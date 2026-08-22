@@ -148,4 +148,4 @@ Key parameters:
 - `--train-group-size` is one positive plus negatives; default: `8`.
 - `--dry-run` prints the underlying FlagEmbedding command without starting training.
 
-Training shows a progress bar and logs metrics every 10 steps.
+Training shows a progress bar and logs metrics every 10 steps. Multi-GPU runs use DDP-safe non-reentrant gradient checkpointing automatically.
