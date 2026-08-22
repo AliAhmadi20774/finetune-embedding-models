@@ -35,22 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-total-limit", type=int, default=2)
     parser.add_argument("--cache-dir", type=Path, default=Path("cache/models"))
     parser.add_argument("--data-cache-dir", type=Path, default=Path("cache/flagembedding"))
-    parser.add_argument(
-        "--resume-from-checkpoint",
-        type=Path,
-        help="Resume optimizer, scheduler, and trainer state from a checkpoint directory.",
-    )
     parser.add_argument("--overwrite-output-dir", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Print the underlying command without training.")
     return parser.parse_args()
 
 
 def build_command(args: argparse.Namespace) -> list[str]:
-    training_module = (
-        "scripts.flagembedding_m3_resume"
-        if args.resume_from_checkpoint is not None
-        else "FlagEmbedding.finetune.embedder.encoder_only.m3"
-    )
     command = [
         sys.executable,
         "-m",
@@ -58,7 +48,7 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--nproc_per_node",
         str(args.num_gpus),
         "-m",
-        training_module,
+        "FlagEmbedding.finetune.embedder.encoder_only.m3",
         "--model_name_or_path",
         args.model,
         "--cache_dir",
@@ -127,8 +117,6 @@ def build_command(args: argparse.Namespace) -> list[str]:
         command.append(f"--{args.precision}")
     if args.num_gpus > 1:
         command.append("--negatives_cross_device")
-    if args.resume_from_checkpoint is not None:
-        command.extend(["--resume_from_checkpoint", str(args.resume_from_checkpoint)])
     if args.overwrite_output_dir:
         command.append("--overwrite_output_dir")
     return command
@@ -144,36 +132,10 @@ def main() -> None:
         selected_gpus = [item.strip() for item in args.cuda_visible_devices.split(",") if item.strip()]
         if len(selected_gpus) != args.num_gpus:
             raise SystemExit("--num-gpus must equal the number of indices in --cuda-visible-devices.")
-    if args.resume_from_checkpoint is not None:
-        if args.overwrite_output_dir:
-            raise SystemExit(
-                "--resume-from-checkpoint cannot be combined with --overwrite-output-dir."
-            )
-        if not args.resume_from_checkpoint.is_dir():
-            raise SystemExit(
-                f"Checkpoint directory not found: {args.resume_from_checkpoint}"
-            )
-        required_checkpoint_files = ("trainer_state.json", "optimizer.pt", "scheduler.pt")
-        missing_files = [
-            name
-            for name in required_checkpoint_files
-            if not (args.resume_from_checkpoint / name).is_file()
-        ]
-        if missing_files:
-            raise SystemExit(
-                f"Invalid or incomplete checkpoint {args.resume_from_checkpoint}; "
-                f"missing: {', '.join(missing_files)}"
-            )
-    if (
-        args.output_dir.exists()
-        and any(args.output_dir.iterdir())
-        and args.resume_from_checkpoint is None
-        and not args.overwrite_output_dir
-    ):
+    if args.output_dir.exists() and any(args.output_dir.iterdir()) and not args.overwrite_output_dir:
         raise SystemExit(
             f"Output directory is not empty: {args.output_dir}. "
-            "Choose another directory, resume from a checkpoint, or pass "
-            "--overwrite-output-dir."
+            "Choose another directory or pass --overwrite-output-dir."
         )
 
     command = build_command(args)

@@ -152,15 +152,6 @@ python scripts/train_bge_m3.py --train-file data/splits/train_separate.jsonl --o
 
 The script trains the dense BGE-M3 retriever with one positive and seven negatives per query.
 
-Resume training from a checkpoint:
-
-```bash
-python scripts/train_bge_m3.py --train-file data/splits/train_separate.jsonl --output-dir outputs/bge-m3-dense --num-gpus 2 --cuda-visible-devices 0,1 --batch-size 1 --passage-max-length 4096 --precision fp16 --resume-from-checkpoint outputs/bge-m3-dense/checkpoint-2000
-```
-
-Use the same training arguments as the original run. Do not use `--overwrite-output-dir` when resuming.
-The launcher applies the required FlagEmbedding/Transformers resume compatibility fix automatically.
-
 ### RTX 3090 (24 GB) Recommended Start
 
 ```bash
