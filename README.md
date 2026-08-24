@@ -119,6 +119,16 @@ python scripts/evaluate_positive_only.py TEST_FILE MODEL
 python scripts/evaluate_positive_only.py data/splits/test_separate.jsonl BAAI/bge-m3 --devices cuda:0 --fp16
 ```
 
+Positive-only corpus with a reranker:
+
+```bash
+python scripts/evaluate_positive_only_reranker.py TEST_FILE BAAI/bge-reranker-v2-m3
+```
+
+```bash
+python scripts/evaluate_positive_only_reranker.py data/splits/test_separate.jsonl BAAI/bge-reranker-v2-m3 --url http://103.130.147.241:44609/v1/rerank
+```
+
 Positive and negative corpus:
 
 ```bash
