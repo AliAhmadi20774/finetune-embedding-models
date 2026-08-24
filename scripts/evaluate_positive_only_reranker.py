@@ -7,6 +7,7 @@ import json
 import platform
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -89,6 +90,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=50,
+        help="Maximum concurrent reranker requests (default: 50).",
+    )
+    parser.add_argument(
         "--truncate-prompt-tokens",
         type=int,
         default=1024,
@@ -99,6 +106,8 @@ def main() -> None:
         parser.error(f"Test file not found: {args.test_file}")
     if args.timeout < 1:
         parser.error("--timeout must be at least 1.")
+    if args.workers < 1:
+        parser.error("--workers must be at least 1.")
     if args.truncate_prompt_tokens == 0 or args.truncate_prompt_tokens < -1:
         parser.error("--truncate-prompt-tokens must be -1 or a positive integer.")
 
@@ -106,17 +115,30 @@ def main() -> None:
     started_timer = time.perf_counter()
     records = load_test_records(args.test_file)
     corpus, relevant_indices = build_corpus(records, "positive_only")
-    ranked_lists = [
-        rerank(
-            args.url,
-            args.model,
-            record["query"],
-            corpus,
-            args.timeout,
-            args.truncate_prompt_tokens,
-        )
-        for record in tqdm(records, desc="Reranking queries", unit=" queries")
-    ]
+    ranked_lists: list[list[int]] = [[] for _ in records]
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures: dict[Future[list[int]], int] = {
+            executor.submit(
+                rerank,
+                args.url,
+                args.model,
+                record["query"],
+                corpus,
+                args.timeout,
+                args.truncate_prompt_tokens,
+            ): index
+            for index, record in enumerate(records)
+        }
+        for future in tqdm(
+            as_completed(futures), total=len(futures), desc="Reranking queries", unit=" queries"
+        ):
+            index = futures[future]
+            try:
+                ranked_lists[index] = future.result()
+            except Exception as error:
+                for pending in futures:
+                    pending.cancel()
+                raise RuntimeError(f"Reranking failed for query {index}: {error}") from error
     output_dir = resolve_output_dir(args.output_dir, "positive_only", args.model, started_at)
     finished_at = datetime.now().astimezone()
     report: dict[str, Any] = {
@@ -132,6 +154,7 @@ def main() -> None:
         "settings": {
             "reranker_url": args.url,
             "timeout_seconds": args.timeout,
+            "workers": args.workers,
             "truncate_prompt_tokens": args.truncate_prompt_tokens,
         },
         "environment": {"python": sys.version.split()[0], "platform": platform.platform()},
