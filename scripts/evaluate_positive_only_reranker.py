@@ -21,10 +21,22 @@ from evaluate_positive_only import build_corpus, load_test_records, resolve_outp
 DEFAULT_URL = "http://103.130.147.241:44609/v1/rerank"
 
 
-def rerank(url: str, model: str, query: str, documents: list[str], timeout: int) -> list[int]:
+def rerank(
+    url: str,
+    model: str,
+    query: str,
+    documents: list[str],
+    timeout: int,
+    truncate_prompt_tokens: int,
+) -> list[int]:
     """Return document indexes sorted from most to least relevant."""
     payload = json.dumps(
-        {"model": model, "query": query, "documents": documents},
+        {
+            "model": model,
+            "query": query,
+            "documents": documents,
+            "truncate_prompt_tokens": truncate_prompt_tokens,
+        },
         ensure_ascii=False,
     ).encode("utf-8")
     request = Request(url, data=payload, headers={"Content-Type": "application/json"})
@@ -76,18 +88,33 @@ def main() -> None:
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument(
+        "--truncate-prompt-tokens",
+        type=int,
+        default=1024,
+        help="Maximum tokens per query-passage pair; use -1 to disable truncation (default: 1024).",
+    )
     args = parser.parse_args()
     if not args.test_file.is_file():
         parser.error(f"Test file not found: {args.test_file}")
     if args.timeout < 1:
         parser.error("--timeout must be at least 1.")
+    if args.truncate_prompt_tokens == 0 or args.truncate_prompt_tokens < -1:
+        parser.error("--truncate-prompt-tokens must be -1 or a positive integer.")
 
     started_at = datetime.now().astimezone()
     started_timer = time.perf_counter()
     records = load_test_records(args.test_file)
     corpus, relevant_indices = build_corpus(records, "positive_only")
     ranked_lists = [
-        rerank(args.url, args.model, record["query"], corpus, args.timeout)
+        rerank(
+            args.url,
+            args.model,
+            record["query"],
+            corpus,
+            args.timeout,
+            args.truncate_prompt_tokens,
+        )
         for record in tqdm(records, desc="Reranking queries", unit=" queries")
     ]
     output_dir = resolve_output_dir(args.output_dir, "positive_only", args.model, started_at)
@@ -102,7 +129,11 @@ def main() -> None:
         "generated_at": finished_at.isoformat(timespec="seconds"),
         "started_at": started_at.isoformat(timespec="seconds"),
         "runtime_seconds": time.perf_counter() - started_timer,
-        "settings": {"reranker_url": args.url, "timeout_seconds": args.timeout},
+        "settings": {
+            "reranker_url": args.url,
+            "timeout_seconds": args.timeout,
+            "truncate_prompt_tokens": args.truncate_prompt_tokens,
+        },
         "environment": {"python": sys.version.split()[0], "platform": platform.platform()},
     }
     save_reports(report, output_dir)
