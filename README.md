@@ -6,22 +6,28 @@ Input: `data/raw/porseman_clean.csv` with `question` and `content_text` columns
 
 ### Current method: separate requests
 
-Generates each of the seven strategies with a separate request. Thinking is enabled by default.
+`generate_hard_negatives_separate.py` generates each of the seven strategies with
+an independent model request and requires seven model requests per input row.
+Thinking is disabled by default for faster generation.
 
 ```bash
 python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all_separate.jsonl
 ```
 
-Without thinking:
+Enable thinking explicitly when higher reasoning quality is worth the additional
+generation time:
 
 ```bash
-python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all_separate.jsonl --no-thinking
+python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all_separate.jsonl --thinking
 ```
 
-Custom length tolerance (default: `0.15`):
+`--no-thinking` is also accepted when the default behavior needs to be explicit.
+
+By default, no output-token limit is sent, so the model server controls the maximum.
+To impose a specific limit explicitly:
 
 ```bash
-python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all_separate.jsonl --length-tolerance 0.10
+python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all_separate.jsonl --max-tokens 32768
 ```
 
 Test a limited number of rows:
@@ -30,12 +36,25 @@ Test a limited number of rows:
 python scripts/generate_hard_negatives_separate.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_test_separate.jsonl --limit 20
 ```
 
-To resume after interruption, run the same command again.
+To resume after interruption, run the same command again. Completed rows are read
+from the output JSONL file. An incomplete row is not saved, so all seven of its
+strategies are requested again on the next run. Failed requests are recorded in
+`OUTPUT.errors.jsonl`.
+
+The default `--workers 50` can overload a small inference server. If requests
+queue up or time out, benchmark a lower value such as `--workers 8` or
+`--workers 16`. `--batch-size` defaults to `7` and controls how many source rows
+are scheduled and finalized together; each new row can create seven requests.
 
 ### Previous method: one combined request
 
+`generate_hard_negatives.py` requests all seven strategies in one response. It
+uses fewer requests and is generally faster, but a failed response retries the
+entire row instead of only one strategy. Thinking is disabled by default here as
+well.
+
 ```bash
-python scripts/generate_hard_negatives.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all.jsonl --no-thinking
+python scripts/generate_hard_negatives.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all.jsonl
 ```
 
 With thinking:
@@ -43,6 +62,9 @@ With thinking:
 ```bash
 python scripts/generate_hard_negatives.py --input data/raw/porseman_clean.csv --output data/raw/hard_negatives_all.jsonl --thinking
 ```
+
+This script resumes completed rows from its output JSONL file. Failed rows are
+written to `OUTPUT.errors.jsonl` and retried the next time the same command runs.
 
 <br>
 
