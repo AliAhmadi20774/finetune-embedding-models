@@ -237,7 +237,7 @@ def count_jsonl_rows(path: Path) -> int:
         return sum(1 for line in file if line.strip())
 
 
-def check_runtime(precision: str) -> None:
+def check_runtime(precision: str, num_gpus: int) -> None:
     missing = [
         name
         for name in ("torch", "transformers", "FlagEmbedding")
@@ -254,15 +254,26 @@ def check_runtime(precision: str) -> None:
 
     if not torch.cuda.is_available():
         raise SystemExit(
-            "CUDA is not available. BGE-M3 fine-tuning is not practical on CPU. "
-            "Install a CUDA-enabled PyTorch build and verify the NVIDIA driver."
+            "CUDA is not available for the selected --cuda-visible-devices. "
+            "Check the GPU indices with nvidia-smi and verify that PyTorch has "
+            "CUDA support."
+        )
+    visible_gpu_count = torch.cuda.device_count()
+    if visible_gpu_count != num_gpus:
+        raise SystemExit(
+            f"Expected {num_gpus} visible GPUs, but PyTorch sees "
+            f"{visible_gpu_count}. Check --num-gpus and "
+            "--cuda-visible-devices."
         )
     if precision == "bf16" and not torch.cuda.is_bf16_supported():
         raise SystemExit("This GPU/PyTorch combination does not support bf16; use fp16.")
 
-    gpu_name = torch.cuda.get_device_name(0)
-    memory_gib = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-    print(f"GPU: {gpu_name} ({memory_gib:.1f} GiB)")
+    for device_index in range(visible_gpu_count):
+        gpu_name = torch.cuda.get_device_name(device_index)
+        memory_gib = (
+            torch.cuda.get_device_properties(device_index).total_memory / (1024**3)
+        )
+        print(f"GPU {device_index}: {gpu_name} ({memory_gib:.1f} GiB)")
 
 
 def build_training_command(args: argparse.Namespace) -> list[str]:
@@ -322,6 +333,8 @@ def build_training_command(args: argparse.Namespace) -> list[str]:
         "True",
         "--logging_steps",
         str(args.logging_steps),
+        "--disable_tqdm",
+        "False",
         "--save_steps",
         str(args.save_steps),
         "--save_total_limit",
@@ -374,11 +387,13 @@ def main() -> None:
     if args.dry_run:
         return
 
-    check_runtime(args.precision)
+    # CUDA reads CUDA_VISIBLE_DEVICES when torch initializes, so set it before
+    # the runtime check imports torch. The child processes inherit this value.
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
+    check_runtime(args.precision, args.num_gpus)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     environment = os.environ.copy()
-    environment["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
     environment.setdefault("WANDB_MODE", "disabled")
     environment.setdefault("TOKENIZERS_PARALLELISM", "false")
 
