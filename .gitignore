@@ -78,6 +78,9 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Microsoft Word temporary lock files
+~$*.docx
+
 # IPython
 profile_default/
 ipython_config.py
