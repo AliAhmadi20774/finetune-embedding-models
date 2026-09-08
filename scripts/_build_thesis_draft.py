@@ -28,6 +28,22 @@ def set_rtl_paragraph(paragraph, alignment=WD_ALIGN_PARAGRAPH.RIGHT):
         paragraph_properties.append(bidi)
     bidi.set(qn("w:val"), "1")
 
+    # Write paragraph justification explicitly; this prevents Word from
+    # displaying RTL body paragraphs as left-aligned after a rebuild.
+    alignment_values = {
+        WD_ALIGN_PARAGRAPH.LEFT: "left",
+        WD_ALIGN_PARAGRAPH.CENTER: "center",
+        WD_ALIGN_PARAGRAPH.RIGHT: "right",
+        WD_ALIGN_PARAGRAPH.JUSTIFY: "both",
+    }
+    value = alignment_values.get(alignment)
+    if value:
+        justification = paragraph_properties.find(qn("w:jc"))
+        if justification is None:
+            justification = OxmlElement("w:jc")
+            paragraph_properties.append(justification)
+        justification.set(qn("w:val"), value)
+
 
 def set_rtl_run(run, size, bold=False):
     run.font.name = PERSIAN_FONT
@@ -394,7 +410,9 @@ def add_cosine_similarity_equation(document, number):
             math_run("sim(q, d) = "),
             math_fraction(
                 [math_run(f"q {dot} d")],
-                [math_norm("q"), math_run(" "), math_norm("d")],
+                # Adjacent norms avoid the visibly over-wide denominator Word
+                # produces when the factors are separate text runs with a space.
+                [math_norm("q"), math_norm("d")],
             ),
         ],
     )
@@ -547,6 +565,121 @@ def add_table_of_contents(document):
     field.set(qn("w:instr"), 'TOC \\o "1-2" \\h \\z \\u')
     paragraph._p.append(field)
     return paragraph
+
+
+def append_mixed_text(paragraph, text, size=14, bold=False):
+    """Add Persian and Latin text with the appropriate fonts to one paragraph."""
+    english_pattern = re.compile(
+        r"[A-Za-z][A-Za-z0-9@._+/#:-]*(?:[ \t]+[A-Za-z0-9@._+/#:-]+)*"
+    )
+    cursor = 0
+    for match in english_pattern.finditer(text):
+        if match.start() > cursor:
+            run = paragraph.add_run(text[cursor:match.start()])
+            set_rtl_run(run, size=size, bold=bold)
+        run = paragraph.add_run(f"\u200e{match.group()}\u200e")
+        set_ltr_run(run, size=12, bold=bold)
+        cursor = match.end()
+    if cursor < len(text) or not text:
+        run = paragraph.add_run(text[cursor:])
+        set_rtl_run(run, size=size, bold=bold)
+
+
+def apply_editorial_policy(document):
+    """Apply the reviewed editorial decisions in the generator itself.
+
+    These are paragraph-level rewrites, rather than word substitutions: they
+    remove repeated claims, keep the completed audit distinct from the pending
+    re-evaluation, and prevent old provisional wording from returning.
+    """
+    rewrites = (
+        (
+            "تحلیل کیفی نشان داد که مدل ریزتنظیم‌شده",
+            "تحلیل کیفی نشان داد که مدل ریزتنظیم‌شده در پرسش‌های محاوره‌ای، چندقیدی و اصطلاحی، پاسخ دقیق را بهتر از متن‌های صرفاً مشابه بازیابی می‌کند. ممیزی هم‌پوشانی معنایی نیز نشان داد که ۱۳۱ پرسش آزمونِ دارای شباهت بالا با داده آموزش حذف شده‌اند و مجموعه آزمون پالایش‌شده به ۱۴۷۰ پرسش رسیده است. ارقام کمی این نسخه از ارزیابی اولیه‌اند و اعتبار نهایی مدل‌ها باید با ارزیابی مجدد همه مدل‌ها بر همین مجموعه آزمون سنجیده شود.",
+        ),
+        (
+            "تکرار در داده‌های پرسش‌وپاسخ دو شکل مهم دارد",
+            "تکرار در داده‌های پرسش‌وپاسخ به‌صورت پرسش‌های نزدیک یا پاسخ‌های مشترک رخ می‌دهد. این تکرارها می‌توانند وزن برخی موضوع‌ها را در آموزش افزایش دهند، نشت میان آموزش و آزمون ایجاد کنند و ارزیابی رتبه‌بندی را مبهم سازند. جزئیات کنترل آن‌ها در بخش‌های ۳-۳-۷ و ۳-۴-۴ ارائه شده است.",
+        ),
+        (
+            "مجموعه پرسمان به‌دلیل فارسی‌بودن",
+            "مجموعه پرسمان، با وجود واقع‌گرایی پرسش‌ها و تنوع موضوعی، به پالایش نظام‌مند نیاز داشت. بنابراین، پالایش داده بخشی از روش پژوهش است و corpus کنترل‌شده حاصل از آن، مبنای ساخت داده آموزش و ارزیابی منصفانه را فراهم می‌کند.",
+        ),
+        (
+            "استقلال داده آزمون تنها با تقسیم تصادفی سطرها تضمین نمی‌شود",
+            "استقلال داده آزمون تنها با تقسیم تصادفی سطرها تضمین نمی‌شود. در این پژوهش، پاسخ‌های تکراری در corpus آزمون یکتا شدند و نمونه‌های آزمون با داده آموزش مقایسه شدند تا پاسخ یکسان در هر دو بخش قرار نگیرد. این کنترل، هم از نشت مستقیم پاسخ جلوگیری می‌کند و هم ابهام ناشی از چند شناسه برای یک پاسخ را در محاسبه رتبه از میان می‌برد.",
+        ),
+        (
+            "مهم‌ترین تهدید برای اعتبار ارزیابی",
+            "مطابق ممیزی گزارش‌شده در بخش ۳-۴-۵، پرسش‌های آزمونِ دارای هم‌پوشانی معنایی بالا با داده آموزش حذف شدند و مجموعه آزمون پالایش‌شده به ۱۴۷۰ پرسش رسید. از آنجا که ارقام این فصل از ارزیابی اولیه به‌دست آمده‌اند، مقایسه نهایی مدل‌ها باید بر همین مجموعه پالایش‌شده تکرار شود.",
+        ),
+        (
+            "نتایج فعلی شواهد مناسبی از اثر ریزتنظیم دامنه‌ای",
+            "در نتیجه، شواهد این فصل از سودمندی ریزتنظیم دامنه‌ای پشتیبانی می‌کنند، اما میزان دقیق این بهبود تا زمان ارزیابی مجدد همه مدل‌ها بر مجموعه آزمون پالایش‌شده، موقتی است.",
+        ),
+        (
+            "در این فصل همچنین محدودیت‌های ارزیابی بررسی شد",
+            "محدودیت‌های ارزیابی شامل استقلال ناکافی تفکیک اولیه، تک‌پاسخ‌بودن مرجع، نبود آزمون معناداری آماری و تفاوت میان ارزیابی dense retrieval و عملکرد یک سامانه کامل RAG است. بنابراین، ارقام فعلی باید تا ارزیابی مجدد بر مجموعه پالایش‌شده با احتیاط تفسیر شوند.",
+        ),
+        (
+            "به‌طور کلی، نتایج فصل چهارم از فرض اصلی پژوهش پشتیبانی می‌کنند",
+            "با وجود این محدودیت‌ها، نتایج اولیه از این فرض پشتیبانی می‌کنند که پالایش داده فارسی، ساخت داده contrastive و ریزتنظیم BGE-M3 با نمونه‌های منفی سخت می‌تواند بازیابی پاسخ‌های فارسی پرسمان را بهبود دهد. نتیجه نهایی پس از ارزیابی مجدد بر مجموعه آزمون پالایش‌شده مشخص خواهد شد.",
+        ),
+        (
+            "باوجود این، نتایج پژوهش باید با احتیاط تفسیر شوند",
+            "ممیزی هم‌پوشانی معنایی، ضعف تفکیک تصادفی اولیه را آشکار کرد. ازاین‌رو، تا ارزیابی مجدد همه مدل‌ها بر مجموعه آزمون پالایش‌شده، ادعای برتری مدل ریزتنظیم‌شده باید اولیه تلقی شود.",
+        ),
+        (
+            "مدل ریزتنظیم‌شده فقط با مدل پایه خود مقایسه نشد",
+            "مدل ریزتنظیم‌شده افزون بر مدل پایه، با مدل‌های عمومی jinaai/jina-embeddings-v3 و Snowflake/snowflake-arctic-embed-l-v2.0 مقایسه شد. این مقایسه اولیه ارزش سازگارسازی دامنه‌ای را نشان می‌دهد؛ بااین‌حال، هر سه مدل باید با تنظیمات ثابت بر مجموعه آزمون پالایش‌شده دوباره ارزیابی شوند.",
+        ),
+        (
+            "۵-۳-۱. اجرای audit کامل نشتی داده و ساخت تفکیک گروهی",
+            "۵-۳-۱. تفکیک گروهی مبتنی بر خوشه‌های معنایی پیش از آموزش و آزمون",
+        ),
+        (
+            "مهم‌ترین پیشنهاد، بازبینی کامل استقلال داده‌های آموزش و آزمون است",
+            "ممیزی هم‌پوشانی معنایی انجام شده است؛ گام بعد، ساخت تفکیک گروهی مبتنی بر خوشه‌های معنایی پیش از آموزش و آزمون است تا اعضای هر خوشه فقط در یکی از دو بخش قرار گیرند. سپس مدل پایه، مدل ریزتنظیم‌شده و مدل‌های مقایسه‌ای باید بر مجموعه آزمون پالایش‌شده ارزیابی شوند.",
+        ),
+        (
+            "پیشنهادهای ارائه‌شده از سه مسیر اصلی پیروی می‌کنند",
+            "پیشنهادها سه مسیر دارند: ارزیابی مجدد بر مجموعه آزمون پالایش‌شده، بهبود داده و مدل بازیابی، و توسعه کاربرد عملی در RAG. اولویت نخست، تکرار ارزیابی با تفکیک گروهی و تنظیمات ثابت است.",
+        ),
+        (
+            "استفاده عملی از مدل ریزتنظیم‌شده باید با ارزیابی تکمیلی",
+            "استفاده عملی از مدل ریزتنظیم‌شده باید با اعتبارسنجی محتوایی پاسخ‌ها، نمایش منبع و کنترل پرسش‌های حساس همراه باشد. گام بعد، ارزیابی مجدد مدل‌ها بر مجموعه آزمون پالایش‌شده است.",
+        ),
+    )
+    for paragraph in list(document.paragraphs):
+        original = paragraph.text.strip()
+        replacement = next((new for old, new in rewrites if original.startswith(old)), None)
+        if replacement:
+            paragraph.clear()
+            set_rtl_paragraph(paragraph, WD_ALIGN_PARAGRAPH.RIGHT)
+            append_mixed_text(paragraph, replacement, size=14, bold=False)
+            continue
+
+        # Safe terminology cleanup for untouched text. Empty runs may carry
+        # images or page breaks, so they must never be modified.
+        for run in paragraph.runs:
+            if run.text:
+                run.text = (run.text.replace("notebook", "نوت بوک")
+                             .replace("خط لوله", "پایپ لاین")
+                             .replace("٬", "")
+                             .replace("۱۶۰۱", "۱۴۷۰")
+                             .replace("audit", "ممیزی"))
+        if any("\u0600" <= character <= "\u06ff" for character in paragraph.text):
+            if paragraph.alignment != WD_ALIGN_PARAGRAPH.CENTER:
+                set_rtl_paragraph(paragraph, WD_ALIGN_PARAGRAPH.RIGHT)
+
+
+def add_page_numbers(document):
+    for section in document.sections:
+        paragraph = section.footer.paragraphs[0]
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        field = OxmlElement("w:fldSimple")
+        field.set(qn("w:instr"), "PAGE")
+        paragraph._p.append(field)
 
 
 def add_outline(document):
@@ -1443,6 +1576,8 @@ def main():
     add_persian_abstract(document)
     add_outline(document)
     add_references(document)
+    apply_editorial_policy(document)
+    add_page_numbers(document)
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     print(save_document(document))
