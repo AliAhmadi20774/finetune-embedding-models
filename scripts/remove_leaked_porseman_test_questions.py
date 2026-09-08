@@ -14,7 +14,7 @@ REPORT_PATH = (
     / "porseman_train_test_similarity"
     / "best_train_match_for_each_test_question.csv"
 )
-OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "porseman_test2.csv"
+OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "porseman_test.csv"
 
 
 def read_csv(path: Path) -> tuple[list[dict[str, str]], list[str]]:
